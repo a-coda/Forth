@@ -26,6 +26,8 @@ pub const Vm = struct {
         sub,
         mul,
         div,
+        eq,
+        lt,
         dot,
         dot_s,
         emit,
@@ -104,6 +106,8 @@ pub const Vm = struct {
         try self.addPrimitive("-", .sub);
         try self.addPrimitive("*", .mul);
         try self.addPrimitive("/", .div);
+        try self.addPrimitive("=", .eq);
+        try self.addPrimitive("<", .lt);
         try self.addPrimitive(".", .dot);
         try self.addPrimitive(".s", .dot_s);
         try self.addPrimitive("emit", .emit);
@@ -245,6 +249,16 @@ pub const Vm = struct {
                 const lhs = try self.pop();
                 if (rhs == 0) return error.DivisionByZero;
                 try self.push(@divTrunc(lhs, rhs));
+            },
+            .eq => {
+                const rhs = try self.pop();
+                const lhs = try self.pop();
+                try self.push(if (lhs == rhs) -1 else 0);
+            },
+            .lt => {
+                const rhs = try self.pop();
+                const lhs = try self.pop();
+                try self.push(if (lhs < rhs) -1 else 0);
             },
             .dot => {
                 const value = try self.pop();

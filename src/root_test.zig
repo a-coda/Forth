@@ -99,7 +99,7 @@ test "words lists dictionary entries" {
     try vm.interpret("words");
     try vm.finish();
 
-    const expected = "dup drop swap over + - * / . .s emit cr words\n";
+    const expected = "dup drop swap over + - * / = < . .s emit cr words\n";
     try std.testing.expectEqualStrings(expected, vm.outputSlice());
 }
 
@@ -122,4 +122,59 @@ test "emit validates character range" {
     defer vm.deinit();
 
     try std.testing.expectError(error.InvalidCharacter, vm.interpret("256 emit"));
+}
+
+test "equality comparison = returns -1 for true" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret("5 5 =");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, -1), vm.stackSlice()[0]);
+}
+
+test "equality comparison = returns 0 for false" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret("5 3 =");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 0), vm.stackSlice()[0]);
+}
+
+test "less-than comparison < returns -1 for true" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret("3 5 <");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, -1), vm.stackSlice()[0]);
+}
+
+test "less-than comparison < returns 0 for false" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret("5 3 <");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 0), vm.stackSlice()[0]);
+}
+
+test "less-than comparison < returns 0 when equal" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret("5 5 <");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 0), vm.stackSlice()[0]);
 }

@@ -45,11 +45,12 @@ zig build test
 
 ## Supported words
 
-Numbers, `:`, `;`, `dup`, `drop`, `swap`, `over`, `+`, `-`, `*`, `/`, `.`, `.s`, `emit`, `cr`, and `words`.
+Numbers, `:`, `;`, `dup`, `drop`, `swap`, `over`, `+`, `-`, `*`, `/`, `=`, `<`, `.`, `.s`, `emit`, `cr`, and `words`.
+
+In Forth tradition, comparison words return `-1` for true and `0` for false.
 
 ## Suggested experiments
 
-- Add comparison words such as `=` and `<`.
 - Add a return stack instead of using Zig recursion for colon calls.
 - Add branching words like `if`, `else`, and `then`.
 - Load `.fth` source files instead of passing code on the command line.
