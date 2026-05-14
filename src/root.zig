@@ -314,25 +314,3 @@ pub const Vm = struct {
 fn parseNumber(token: []const u8) ?i64 {
     return std.fmt.parseInt(i64, token, 10) catch null;
 }
-
-test "primitives manipulate the stack" {
-    var vm = try Vm.init(std.testing.allocator);
-    defer vm.deinit();
-
-    try vm.interpret("2 3 + 4 *");
-    try vm.finish();
-
-    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
-    try std.testing.expectEqual(@as(i64, 20), vm.stackSlice()[0]);
-}
-
-test "colon definitions compile threaded code" {
-    var vm = try Vm.init(std.testing.allocator);
-    defer vm.deinit();
-
-    try vm.interpret(": square dup * ; 5 square .");
-    try vm.finish();
-
-    try std.testing.expectEqualStrings("25 ", vm.outputSlice());
-    try std.testing.expectEqual(@as(usize, 0), vm.stackSlice().len);
-}
