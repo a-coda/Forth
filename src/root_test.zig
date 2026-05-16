@@ -178,3 +178,81 @@ test "less-than comparison < returns 0 when equal" {
     try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
     try std.testing.expectEqual(@as(i64, 0), vm.stackSlice()[0]);
 }
+
+test "if then executes body for true flag" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret(": maybe-add 1 = if 10 + then ; 5 1 maybe-add");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 15), vm.stackSlice()[0]);
+}
+
+test "if then skips body for false flag" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret(": maybe-add 1 = if 10 + then ; 5 2 maybe-add");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 5), vm.stackSlice()[0]);
+}
+
+test "if else then selects true branch" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret(": choose 1 = if 100 else 200 then ; 1 choose");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 100), vm.stackSlice()[0]);
+}
+
+test "if else then selects false branch" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret(": choose 1 = if 100 else 200 then ; 2 choose");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 200), vm.stackSlice()[0]);
+}
+
+test "nested if else then works" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret(": classify dup 0 < if drop -1 else dup 0 = if drop 0 else drop 1 then then ; -5 classify 0 classify 9 classify");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 3), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, -1), vm.stackSlice()[0]);
+    try std.testing.expectEqual(@as(i64, 0), vm.stackSlice()[1]);
+    try std.testing.expectEqual(@as(i64, 1), vm.stackSlice()[2]);
+}
+
+test "else without if reports error" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try std.testing.expectError(error.UnexpectedElse, vm.interpret(": bad else ;"));
+}
+
+test "then without if reports error" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try std.testing.expectError(error.UnexpectedThen, vm.interpret(": bad then ;"));
+}
+
+test "unterminated if reports error when ending definition" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try std.testing.expectError(error.UnmatchedIf, vm.interpret(": bad if 1 ;"));
+}

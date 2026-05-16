@@ -14,6 +14,7 @@ pub const Vm = struct {
     output: std.ArrayList(u8),
     current_definition: ?usize,
     expecting_name: bool,
+    control_stack: std.ArrayList(ControlFrame),
 
     const Self = @This();
 
@@ -38,7 +39,19 @@ pub const Vm = struct {
     const Instruction = union(enum) {
         call: usize,
         lit: i64,
+        jump_if_zero: usize,
+        jump: usize,
         exit,
+    };
+
+    const ControlKind = enum {
+        if_then,
+        if_else,
+    };
+
+    const ControlFrame = struct {
+        kind: ControlKind,
+        patch_index: usize,
     };
 
     const WordKind = union(enum) {
@@ -59,6 +72,7 @@ pub const Vm = struct {
             .output = .empty,
             .current_definition = null,
             .expecting_name = false,
+            .control_stack = .empty,
         };
         try vm.installPrimitives();
         return vm;
@@ -75,6 +89,7 @@ pub const Vm = struct {
         self.dictionary.deinit(self.allocator);
         self.stack.deinit(self.allocator);
         self.output.deinit(self.allocator);
+        self.control_stack.deinit(self.allocator);
     }
 
     pub fn interpret(self: *Self, source: []const u8) !void {
@@ -87,6 +102,7 @@ pub const Vm = struct {
     pub fn finish(self: *Self) !void {
         if (self.expecting_name) return error.ExpectedWordName;
         if (self.current_definition != null) return error.UnterminatedDefinition;
+        if (self.control_stack.items.len != 0) return error.UnmatchedIf;
     }
 
     pub fn outputSlice(self: *const Self) []const u8 {
@@ -161,6 +177,7 @@ pub const Vm = struct {
     }
 
     fn endDefinition(self: *Self) !void {
+        if (self.control_stack.items.len != 0) return error.UnmatchedIf;
         const code = self.currentCode() orelse return error.UnexpectedSemicolon;
         try code.append(self.allocator, .{ .exit = {} });
         self.current_definition = null;
@@ -173,6 +190,22 @@ pub const Vm = struct {
 
     fn compileToken(self: *Self, token: []const u8) !void {
         const code = self.currentCode() orelse return error.UnexpectedSemicolon;
+
+        if (std.mem.eql(u8, token, "if")) {
+            try self.compileIf(code);
+            return;
+        }
+
+        if (std.mem.eql(u8, token, "else")) {
+            try self.compileElse(code);
+            return;
+        }
+
+        if (std.mem.eql(u8, token, "then")) {
+            try self.compileThen(code);
+            return;
+        }
+
         if (parseNumber(token)) |number| {
             try code.append(self.allocator, .{ .lit = number });
             return;
@@ -202,13 +235,66 @@ pub const Vm = struct {
 
     fn executeThread(self: *Self, code: []const Instruction) anyerror!void {
         var pc: usize = 0;
-        while (pc < code.len) : (pc += 1) {
+        while (pc < code.len) {
             switch (code[pc]) {
-                .lit => |value| try self.push(value),
-                .call => |word_index| try self.executeWord(word_index),
+                .lit => |value| {
+                    try self.push(value);
+                    pc += 1;
+                },
+                .call => |word_index| {
+                    try self.executeWord(word_index);
+                    pc += 1;
+                },
+                .jump_if_zero => |target| {
+                    const flag = try self.pop();
+                    if (flag == 0) {
+                        pc = target;
+                    } else {
+                        pc += 1;
+                    }
+                },
+                .jump => |target| {
+                    pc = target;
+                },
                 .exit => return,
             }
         }
+    }
+
+    fn compileIf(self: *Self, code: *std.ArrayList(Instruction)) !void {
+        const patch_index = code.items.len;
+        try code.append(self.allocator, .{ .jump_if_zero = 0 });
+        try self.control_stack.append(self.allocator, .{
+            .kind = .if_then,
+            .patch_index = patch_index,
+        });
+    }
+
+    fn compileElse(self: *Self, code: *std.ArrayList(Instruction)) !void {
+        const frame = self.popControlFrame() orelse return error.UnexpectedElse;
+        if (frame.kind != .if_then) return error.UnexpectedElse;
+
+        const jump_index = code.items.len;
+        try code.append(self.allocator, .{ .jump = 0 });
+        code.items[frame.patch_index].jump_if_zero = jump_index + 1;
+
+        try self.control_stack.append(self.allocator, .{
+            .kind = .if_else,
+            .patch_index = jump_index,
+        });
+    }
+
+    fn compileThen(self: *Self, code: *std.ArrayList(Instruction)) !void {
+        const frame = self.popControlFrame() orelse return error.UnexpectedThen;
+        switch (frame.kind) {
+            .if_then => code.items[frame.patch_index].jump_if_zero = code.items.len,
+            .if_else => code.items[frame.patch_index].jump = code.items.len,
+        }
+    }
+
+    fn popControlFrame(self: *Self) ?ControlFrame {
+        if (self.control_stack.items.len == 0) return null;
+        return self.control_stack.pop().?;
     }
 
     fn executePrimitive(self: *Self, primitive: Primitive) anyerror!void {

@@ -18,6 +18,7 @@ The compiled instruction stream uses three instruction kinds:
 
 - `lit` pushes a literal number
 - `call` executes another word by dictionary index
+- `jump_if_zero` and `jump` implement branch targets for `if`/`else`/`then`
 - `exit` returns from the current colon definition
 
 That makes the inner interpreter small: it advances a program counter through a colon word and dispatches each instruction.
@@ -47,10 +48,19 @@ zig build test
 
 Numbers, `:`, `;`, `dup`, `drop`, `swap`, `over`, `+`, `-`, `*`, `/`, `=`, `<`, `.`, `.s`, `emit`, `cr`, and `words`.
 
+Inside colon definitions, control-flow keywords `if`, `else`, and `then` are available.
+They consume a flag value from the stack (`0` is false, non-zero is true), just like standard Forth branching.
+
 In Forth tradition, comparison words return `-1` for true and `0` for false.
+
+Example:
+
+```forth
+: abs dup 0 < if -1 * then ;
+: sign dup 0 < if drop -1 else dup 0 = if drop 0 else drop 1 then then ;
+```
 
 ## Suggested experiments
 
 - Add a return stack instead of using Zig recursion for colon calls.
-- Add branching words like `if`, `else`, and `then`.
 - Load `.fth` source files instead of passing code on the command line.
