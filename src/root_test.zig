@@ -23,6 +23,52 @@ test "colon definitions compile threaded code" {
     try std.testing.expectEqual(@as(usize, 0), vm.stackSlice().len);
 }
 
+test "nested colon calls resume caller after return" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    try vm.interpret(": double 2 * ; : fourth double double ; 5 fourth");
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 20), vm.stackSlice()[0]);
+}
+
+test "deep colon call chain uses runtime return stack" {
+    var vm = try Forth.Vm.init(std.testing.allocator);
+    defer vm.deinit();
+
+    var source = std.ArrayList(u8).empty;
+    defer source.deinit(std.testing.allocator);
+
+    const depth: usize = 2048;
+
+    var remaining = depth;
+    while (remaining > 0) {
+        remaining -= 1;
+        const index = remaining;
+
+        var buffer: [64]u8 = undefined;
+        const definition = try std.fmt.bufPrint(&buffer, ": w{d} ", .{index});
+        try source.appendSlice(std.testing.allocator, definition);
+        if (index + 1 < depth) {
+            const callee = try std.fmt.bufPrint(&buffer, "w{d}", .{index + 1});
+            try source.appendSlice(std.testing.allocator, callee);
+        } else {
+            try source.appendSlice(std.testing.allocator, "1");
+        }
+        try source.appendSlice(std.testing.allocator, " ; ");
+    }
+
+    try source.appendSlice(std.testing.allocator, "w0");
+
+    try vm.interpret(source.items);
+    try vm.finish();
+
+    try std.testing.expectEqual(@as(usize, 1), vm.stackSlice().len);
+    try std.testing.expectEqual(@as(i64, 1), vm.stackSlice()[0]);
+}
+
 test "drop removes the top value" {
     var vm = try Forth.Vm.init(std.testing.allocator);
     defer vm.deinit();

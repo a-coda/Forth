@@ -4,7 +4,7 @@ This repository builds a small token-threaded Forth interpreter in Zig 0.16.
 The point is to make both systems easy to inspect:
 
 - Zig side: a small `Vm` struct, explicit memory ownership, tagged unions for words and instructions, and a tiny buildable CLI.
-- Forth side: a data stack, a dictionary, colon definitions, and an inner interpreter that walks threaded code.
+- Forth side: a data stack, a return stack, a dictionary, colon definitions, and an inner interpreter that walks threaded code.
 
 ## How it works
 
@@ -21,7 +21,7 @@ The compiled instruction stream uses three instruction kinds:
 - `jump_if_zero` and `jump` implement branch targets for `if`/`else`/`then`
 - `exit` returns from the current colon definition
 
-That makes the inner interpreter small: it advances a program counter through a colon word and dispatches each instruction.
+That keeps the inner interpreter small: it advances a program counter through a colon word, uses a small return stack to resume callers after nested colon calls, and dispatches each instruction.
 
 ## Run it
 
@@ -62,5 +62,4 @@ Example:
 
 ## Suggested experiments
 
-- Add a return stack instead of using Zig recursion for colon calls.
 - Load `.fth` source files instead of passing code on the command line.

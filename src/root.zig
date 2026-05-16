@@ -10,6 +10,7 @@ pub const demo_source =
 pub const Vm = struct {
     allocator: std.mem.Allocator,
     stack: std.ArrayList(i64),
+    return_stack: std.ArrayList(ReturnFrame),
     dictionary: std.ArrayList(Word),
     output: std.ArrayList(u8),
     current_definition: ?usize,
@@ -54,6 +55,11 @@ pub const Vm = struct {
         patch_index: usize,
     };
 
+    const ReturnFrame = struct {
+        word_index: usize,
+        pc: usize,
+    };
+
     const WordKind = union(enum) {
         primitive: Primitive,
         colon: std.ArrayList(Instruction),
@@ -68,6 +74,7 @@ pub const Vm = struct {
         var vm = Self{
             .allocator = allocator,
             .stack = .empty,
+            .return_stack = .empty,
             .dictionary = .empty,
             .output = .empty,
             .current_definition = null,
@@ -88,6 +95,7 @@ pub const Vm = struct {
         }
         self.dictionary.deinit(self.allocator);
         self.stack.deinit(self.allocator);
+        self.return_stack.deinit(self.allocator);
         self.output.deinit(self.allocator);
         self.control_stack.deinit(self.allocator);
     }
@@ -229,35 +237,67 @@ pub const Vm = struct {
         const word = &self.dictionary.items[word_index];
         switch (word.kind) {
             .primitive => |primitive| try self.executePrimitive(primitive),
-            .colon => |code| try self.executeThread(code.items),
+            .colon => try self.executeThread(word_index),
         }
     }
 
-    fn executeThread(self: *Self, code: []const Instruction) anyerror!void {
+    fn executeThread(self: *Self, entry_word_index: usize) anyerror!void {
+        self.return_stack.clearRetainingCapacity();
+        defer self.return_stack.clearRetainingCapacity();
+
+        var current_word_index = entry_word_index;
         var pc: usize = 0;
-        while (pc < code.len) {
-            switch (code[pc]) {
-                .lit => |value| {
-                    try self.push(value);
-                    pc += 1;
-                },
-                .call => |word_index| {
-                    try self.executeWord(word_index);
-                    pc += 1;
-                },
-                .jump_if_zero => |target| {
-                    const flag = try self.pop();
-                    if (flag == 0) {
-                        pc = target;
-                    } else {
+
+        thread_loop: while (true) {
+            const code = self.dictionary.items[current_word_index].kind.colon.items;
+
+            while (pc < code.len) {
+                switch (code[pc]) {
+                    .lit => |value| {
+                        try self.push(value);
                         pc += 1;
-                    }
-                },
-                .jump => |target| {
-                    pc = target;
-                },
-                .exit => return,
+                    },
+                    .call => |word_index| {
+                        const word = &self.dictionary.items[word_index];
+                        switch (word.kind) {
+                            .primitive => |primitive| {
+                                try self.executePrimitive(primitive);
+                                pc += 1;
+                            },
+                            .colon => {
+                                try self.return_stack.append(self.allocator, .{
+                                    .word_index = current_word_index,
+                                    .pc = pc + 1,
+                                });
+                                current_word_index = word_index;
+                                pc = 0;
+                                continue :thread_loop;
+                            },
+                        }
+                    },
+                    .jump_if_zero => |target| {
+                        const flag = try self.pop();
+                        if (flag == 0) {
+                            pc = target;
+                        } else {
+                            pc += 1;
+                        }
+                    },
+                    .jump => |target| {
+                        pc = target;
+                    },
+                    .exit => {
+                        const frame = self.popReturnFrame() orelse return;
+                        current_word_index = frame.word_index;
+                        pc = frame.pc;
+                        continue :thread_loop;
+                    },
+                }
             }
+
+            const frame = self.popReturnFrame() orelse return;
+            current_word_index = frame.word_index;
+            pc = frame.pc;
         }
     }
 
@@ -295,6 +335,11 @@ pub const Vm = struct {
     fn popControlFrame(self: *Self) ?ControlFrame {
         if (self.control_stack.items.len == 0) return null;
         return self.control_stack.pop().?;
+    }
+
+    fn popReturnFrame(self: *Self) ?ReturnFrame {
+        if (self.return_stack.items.len == 0) return null;
+        return self.return_stack.pop().?;
     }
 
     fn executePrimitive(self: *Self, primitive: Primitive) anyerror!void {
